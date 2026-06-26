@@ -184,6 +184,12 @@ const _bindDrawerEvents = () => {
 
     // 插入並關閉
     document.getElementById('btn-drawer-insert')?.addEventListener('click', () => {
+        // 方案確認：允許單獨插入修飾鍵（如只點了"前面"）。檢查記憶體中是否有殘留的修飾鍵，若有則化為文字附加，解決只有修飾鍵時無法輸出的問題。
+        const activeMods = getActiveModifiers();
+        if (activeMods.length > 0) {
+            _appendToTarget(activeMods.join(''));
+            resetModifiers();
+        }
         _closeDrawer();
     });
 
@@ -192,7 +198,6 @@ const _bindDrawerEvents = () => {
         resetModifiers();
         _closeDrawer();
     });
-};
 
 const _openDrawer = async (target) => {
     const drawer = document.getElementById('tag-drawer');
@@ -206,13 +211,11 @@ const _openDrawer = async (target) => {
     const filterFn = TAG_FILTER[target];
     const tags = filterFn(grouped);
 
-    // 渲染修飾鍵（主訴區塊才顯示）
+    // 渲染修飾鍵（規格確認：所有區塊皆固定顯示，不僅限於主訴）
     const modifierArea = document.getElementById('drawer-modifiers');
     if (modifierArea) {
-        modifierArea.style.display = target === 'chiefComplaint' ? 'flex' : 'none';
-        if (target === 'chiefComplaint') {
-            _renderModifiers(modifierArea);
-        }
+        modifierArea.style.display = 'flex';
+        _renderModifiers(modifierArea);
     }
 
     // 渲染常用標籤

@@ -1,7 +1,11 @@
 // schemas/models.js
 
 // 內部工具：僅供產生預設值使用
-const generateId = () => crypto.randomUUID();
+// 方案確認：將 ID 縮減為 16 碼數字 (xxxx-xxxx-xxxx-xxxx)，對於本地端純前端應用已具備極高的防撞庫機率，且符合簡短易讀需求。
+const generateId = () => {
+    const group = () => Math.floor(1000 + Math.random() * 9000).toString();
+    return `${group()}-${group()}-${group()}-${group()}`;
+};
 
 // 方案確認：改用包含時區偏移的計算，解決標準 ISO 字串因 UTC 時間導致本地跨日時少一天的錯誤。此為純前端無伺服器架構下，處理本地時間戳的業界成熟作法，不產生外部依賴。
 export const getTodayLocalISO = () => {
@@ -16,7 +20,11 @@ export const getTodayLocalISO = () => {
 export const ClientSchema = (data = {}) => Object.freeze({
     id: data.id || generateId(),
     name: data.name || '',
-    contact: data.contact || '',
+    // 方案確認：將聯絡方式拆分為獨立欄位以配合 UI 收折，若為舊資料匯入則自動 fallback 讀取原 contact 欄位防呆。
+    phone: data.phone || data.contact || '',
+    line: data.line || '',
+    fb: data.fb || '',
+    email: data.email || '',
     profession: data.profession || '',
     exerciseHabit: data.exerciseHabit || '',
     medicalHistory: data.medicalHistory || '',

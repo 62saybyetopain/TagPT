@@ -24,7 +24,76 @@ export const loadTagSettings = async () => {
     if (!container) throw new Error('[TAG_SETTINGS_ERROR] 找不到 #tag-settings-container');
 
     container.innerHTML = '';
+    
+    // 建立常用標籤專屬容器，確保永遠置頂
+    const favContainer = document.createElement('div');
+    favContainer.id = 'tag-settings-fav-container';
+    container.appendChild(favContainer);
+
+    await _renderFavoritesSection();
     await _renderAllCategories(container);
+};
+
+// ─── 渲染常用標籤區塊 ─────────────────────────────────────────────────────────
+
+const _renderFavoritesSection = async () => {
+    const favContainer = document.getElementById('tag-settings-fav-container');
+    if (!favContainer) return;
+    
+    favContainer.innerHTML = ''; // 清空重建
+
+    const grouped = await getTagsGrouped();
+    
+    const section = document.createElement('details');
+    section.className = 'tag-category-section';
+    section.open = true; // 預設展開
+
+    const summary = document.createElement('summary');
+    summary.className = 'tag-category-title';
+    summary.textContent = '⭐ 常用標籤總覽';
+    section.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'tag-category-body';
+
+    let hasAnyFavorite = false;
+
+    // 直接依賴 TAG_CATEGORIES，確保未來增減大分類時自動同步，不需手動改兩次
+    TAG_CATEGORIES.forEach(({ key, label }) => {
+        let tags = [];
+        if (key === 'anatomy') {
+            // 將 anatomy 解剖部位的 subCategory 攤平，過濾出常用
+            tags = Object.values(grouped.anatomy || {}).flat().filter(t => t.isFavorite);
+        } else {
+            tags = (grouped[key] || []).filter(t => t.isFavorite);
+        }
+
+        if (tags.length === 0) return;
+        hasAnyFavorite = true;
+
+        const subTitle = document.createElement('div');
+        subTitle.className = 'tag-sub-title';
+        subTitle.textContent = label;
+        
+        const tagList = document.createElement('div');
+        tagList.className = 'tag-list';
+        
+        tags.forEach(tag => tagList.appendChild(_createTagEl(tag)));
+
+        body.appendChild(subTitle);
+        body.appendChild(tagList);
+    });
+
+    if (!hasAnyFavorite) {
+        const emptyMsg = document.createElement('p');
+        emptyMsg.style.fontSize = '0.85rem';
+        emptyMsg.style.color = 'var(--color-text-muted)';
+        emptyMsg.textContent = '目前尚無常用標籤';
+        body.appendChild(emptyMsg);
+    }
+
+    section.appendChild(body);
+    favContainer.appendChild(section);
 };
 
 // ─── 渲染所有分類區塊 ─────────────────────────────────────────────────────────
@@ -121,9 +190,15 @@ const _createTagEl = (tag) => {
     favoriteBtn.title = '切換常用';
     favoriteBtn.addEventListener('click', async () => {
         const updated = await toggleFavorite(tag.id);
-        // 即時更新按鈕視覺，不重新渲染整頁
-        favoriteBtn.className = updated.isFavorite ? 'btn-favorite active' : 'btn-favorite';
-        favoriteBtn.textContent = updated.isFavorite ? '★' : '☆';
+        
+        // 方案確認：全域同步畫面上所有相同 ID 的星星狀態，確保「常用區塊」與「分類區塊」的視覺完全一致。
+        document.querySelectorAll(`.tag-item[data-tag-id="${tag.id}"] .btn-favorite`).forEach(btn => {
+            btn.className = updated.isFavorite ? 'btn-favorite active' : 'btn-favorite';
+            btn.textContent = updated.isFavorite ? '★' : '☆';
+        });
+        
+        // 方案確認：每次點擊後主動重繪上方常用區塊，即時處理標籤的移入與移出，維持架構的純粹與資料一致性。
+        await _renderFavoritesSection();
     });
 
     const deleteBtn = document.createElement('button');
@@ -133,8 +208,9 @@ const _createTagEl = (tag) => {
         await deleteTag(tag.id, () => Promise.resolve(
             window.confirm(`確定要永久刪除標籤「${tag.text}」？`)
         ));
-        // 刪除成功後移除該元素
-        el.remove();
+        // 全域移除所有相同 ID 的標籤 DOM（包含常用區塊與一般區塊）
+        document.querySelectorAll(`.tag-item[data-tag-id="${tag.id}"]`).forEach(node => node.remove());
+        await _renderFavoritesSection();
     });
 
     el.appendChild(textSpan);

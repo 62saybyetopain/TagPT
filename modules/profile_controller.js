@@ -42,7 +42,7 @@ export const loadDashboard = async (page = 0) => {
         const q = searchInput.value.trim().toLowerCase();
         const filtered = _dashboardClients.filter(c =>
             c.name.toLowerCase().includes(q) ||
-            c.contact.toLowerCase().includes(q) ||
+            c.phone.toLowerCase().includes(q) ||
             c.lastServiceDate.includes(q)
         );
         _renderDashboardList(filtered, 0);
@@ -74,7 +74,7 @@ const _renderDashboardList = (clients, page) => {
         row.dataset.clientId = client.id;
         row.innerHTML = `
             <span class="client-name">${_escHtml(client.name)}</span>
-            <span class="client-contact">${_escHtml(client.contact)}</span>
+            <span class="client-contact">${_escHtml(client.phone)}</span>
             <span class="client-date">${_escHtml(client.lastServiceDate)}</span>
             <button class="btn-delete-client" data-id="${_escHtml(client.id)}">刪除</button>
         `;
@@ -82,9 +82,11 @@ const _renderDashboardList = (clients, page) => {
             if (e.target.classList.contains('btn-delete-client')) return;
             window.location.hash = `#client/${client.id}`;
         });
-        row.querySelector('.btn-delete-client')?.addEventListener('click', (e) => {
+        row.querySelector('.btn-delete-client')?.addEventListener('click', async (e) => {
             e.stopPropagation();
-            deleteClient(client.id);
+            // 方案確認：等待刪除完成，若回傳 true (使用者有確認刪除)，則直接重新呼叫 loadDashboard 以更新畫面，解決手動重整的問題。
+            const isDeleted = await deleteClient(client.id);
+            if (isDeleted) loadDashboard(page); 
         });
         listEl.appendChild(row);
     });
@@ -116,9 +118,14 @@ export const loadProfile = async (clientId, recordPage = 0) => {
     _fillProfileForm(client);
     await _renderRecordList(clientId, recordPage);
 
-    // 儲存個案資料（含 ID 修改）
-    document.getElementById('btn-save-client')?.addEventListener('click', () => {
-        _saveClient(client);
+    // 儲存個案資料（含 ID 修改）與點擊回饋
+    document.getElementById('btn-save-client')?.addEventListener('click', async (e) => {
+        const btn = e.target;
+        const originalText = btn.textContent;
+        btn.textContent = '處理中...';
+        await _saveClient(client);
+        btn.textContent = '已儲存 ✓';
+        setTimeout(() => btn.textContent = originalText, 1500);
     });
 
     // 新增服務紀錄
@@ -133,7 +140,8 @@ export const loadProfile = async (clientId, recordPage = 0) => {
 };
 
 const _fillProfileForm = (client) => {
-    const fields = ['id', 'name', 'contact', 'profession', 'exerciseHabit', 'medicalHistory', 'notes'];
+    // 對齊新 Schema 的所有欄位
+    const fields = ['id', 'name', 'phone', 'line', 'fb', 'email', 'profession', 'exerciseHabit', 'medicalHistory', 'notes'];
     fields.forEach(key => {
         const el = document.getElementById(`client-${key}`);
         if (el) el.value = client[key] || '';
@@ -211,7 +219,10 @@ const _saveClient = async (originalClient) => {
     const updatedData = {
         id: newId,
         name: document.getElementById('client-name')?.value.trim() || '',
-        contact: document.getElementById('client-contact')?.value.trim() || '',
+        phone: document.getElementById('client-phone')?.value.trim() || '',
+        line: document.getElementById('client-line')?.value.trim() || '',
+        fb: document.getElementById('client-fb')?.value.trim() || '',
+        email: document.getElementById('client-email')?.value.trim() || '',
         profession: document.getElementById('client-profession')?.value.trim() || '',
         exerciseHabit: document.getElementById('client-exerciseHabit')?.value.trim() || '',
         medicalHistory: document.getElementById('client-medicalHistory')?.value.trim() || '',
@@ -269,7 +280,8 @@ const _saveClient = async (originalClient) => {
 
 export const deleteClient = async (clientId) => {
     const confirmed = window.confirm('確定要永久刪除此個案及其所有服務紀錄？此操作無法復原。');
-    if (!confirmed) return;
+    // 方案確認：修改為回傳 boolean 狀態給外部呼叫方，判斷是否需重新整理畫面
+    if (!confirmed) return false;
 
     const relatedRecords = await queryByIndex(STORES.RECORDS, 'clientId', clientId);
 
@@ -279,6 +291,7 @@ export const deleteClient = async (clientId) => {
     });
 
     window.location.hash = '#dashboard';
+    return true; 
 };
 
 export const deleteRecord = async (recordId, clientId, currentPage) => {
