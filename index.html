@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhysioApp</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- ═══ 全域防護層（最高 z-index） ═══════════════════════════════════════ -->
+
+    <!-- 儲存抹除警告橫幅 -->
+    <div id="eviction-warning-banner" style="display:none;">
+        ⚠️ 當前裝置未開啟永久儲存，若瀏覽器清理暫存可能會遺失紀錄，請務必定期匯出 JSON 備份。
+    </div>
+
+    <!-- 全局凍結遮罩 -->
+    <div id="global-freezer" style="display:none;">
+        <div class="freezer-content">
+            <div class="freezer-spinner"></div>
+            <p class="freezer-message">網路已斷開，系統暫停操作</p>
+        </div>
+    </div>
+
+    <!-- ═══ 標籤抽屜（次高 z-index） ════════════════════════════════════════ -->
+    <dialog id="tag-drawer">
+        <div class="drawer-inner">
+            <div class="drawer-header">
+                <h2 class="drawer-title">選擇標籤</h2>
+                <button id="btn-drawer-close" class="btn-icon" aria-label="關閉">✕</button>
+            </div>
+
+            <!-- 修飾鍵區（主訴專用，其他區塊隱藏） -->
+            <div id="drawer-modifiers" class="drawer-modifiers"></div>
+
+            <!-- 常用標籤區 -->
+            <div class="drawer-section">
+                <p class="drawer-section-label">常用</p>
+                <div id="drawer-favorites" class="drawer-tag-grid"></div>
+            </div>
+
+            <!-- 主要標籤區 -->
+            <div class="drawer-section">
+                <p class="drawer-section-label">全部標籤</p>
+                <div id="drawer-tags" class="drawer-tag-grid"></div>
+            </div>
+
+            <div class="drawer-footer">
+                <button id="btn-drawer-insert" class="btn-primary btn-full">插入並關閉</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- ═══ 主應用容器 ════════════════════════════════════════════════════════ -->
+    <div id="app"></div>
+
+    <!-- ═══ 視圖模板 ══════════════════════════════════════════════════════════ -->
+
+    <!-- M1：首頁 Dashboard -->
+    <template id="tpl-dashboard">
+        <div class="view view-dashboard">
+            <header class="app-header">
+                <h1 class="app-title">個案管理</h1>
+                <button id="btn-settings" class="btn-icon" aria-label="系統設定">⚙️</button>
+            </header>
+
+            <div class="search-bar">
+                <input id="dashboard-search" type="search"
+                       placeholder="搜尋姓名、聯絡方式、日期…" autocomplete="off">
+            </div>
+
+            <div id="client-list" class="list-container"></div>
+            <div id="dashboard-pagination" class="pagination"></div>
+
+            <button id="btn-create-client" class="btn-fab" aria-label="新增個案">＋</button>
+        </div>
+    </template>
+
+    <!-- M2：系統設定 Settings -->
+    <template id="tpl-settings">
+        <div class="view view-settings">
+            <header class="app-header">
+                <button id="btn-back-dashboard" class="btn-back">← 返回</button>
+                <h1 class="app-title">系統設定</h1>
+            </header>
+
+            <!-- 分頁切換 -->
+            <div class="tab-bar">
+                <button class="tab-btn tab-btn--active" data-tab="io">匯入匯出</button>
+                <button class="tab-btn" data-tab="tags">標籤設定</button>
+            </div>
+
+            <!-- 分頁 A：匯入匯出 -->
+            <div id="tab-io" class="tab-panel">
+                <section class="settings-section">
+                    <h2 class="settings-section-title">JSON 匯出</h2>
+                    <button id="btn-export-clients" class="btn-secondary btn-full">匯出個案檔案</button>
+                    <button id="btn-export-tags"    class="btn-secondary btn-full">匯出系統資料（標籤）</button>
+                    <button id="btn-export-full"    class="btn-secondary btn-full">匯出完整檔案</button>
+                </section>
+
+                <section class="settings-section">
+                    <h2 class="settings-section-title">JSON 匯入</h2>
+                    <button id="btn-import-clients" class="btn-secondary btn-full">匯入個案檔案</button>
+                    <button id="btn-import-tags"    class="btn-secondary btn-full">匯入系統資料（標籤）</button>
+                    <button id="btn-import-full"    class="btn-secondary btn-full">匯入完整檔案</button>
+                </section>
+
+                <section class="settings-section">
+                    <h2 class="settings-section-title">P2P 點對點同步</h2>
+                    <div class="p2p-send-group">
+                        <button id="btn-p2p-send-clients" class="btn-secondary btn-full">傳送個案檔案</button>
+                        <button id="btn-p2p-send-tags"    class="btn-secondary btn-full">傳送系統資料（標籤）</button>
+                        <button id="btn-p2p-send-full"    class="btn-secondary btn-full">傳送完整檔案</button>
+                        <p class="p2p-id-label">發送方 ID：<span id="p2p-sender-id" class="p2p-id-value">—</span></p>
+                    </div>
+                    <div class="p2p-receive-group">
+                        <input id="p2p-sender-id-input" type="text" placeholder="輸入發送方 ID…">
+                        <button id="btn-p2p-receive" class="btn-primary btn-full">接收並同步</button>
+                    </div>
+                </section>
+
+                <section class="settings-section settings-section--danger">
+                    <h2 class="settings-section-title">冷資料封存匯出</h2>
+                    <p class="settings-hint">封存並永久刪除指定日期以前的個案資料。</p>
+                    <input id="cold-export-date" type="date">
+                    <button id="btn-cold-export" class="btn-danger btn-full">執行封存匯出</button>
+                </section>
+            </div>
+
+            <!-- 分頁 B：標籤設定 -->
+            <div id="tab-tags" class="tab-panel tab-panel--hidden">
+                <div id="tag-settings-container"></div>
+            </div>
+        </div>
+    </template>
+
+    <!-- M3：個案檔案首頁 Profile -->
+    <template id="tpl-profile">
+        <div class="view view-profile">
+            <header class="app-header">
+                <button id="btn-back-dashboard" class="btn-back">← 返回</button>
+                <h1 class="app-title">個案檔案</h1>
+                <button id="btn-save-client" class="btn-text">儲存</button>
+            </header>
+
+            <section class="form-section">
+                <div class="form-row">
+                    <label for="client-id">唯一 ID</label>
+                    <input id="client-id" type="text" autocomplete="off">
+                </div>
+                <div class="form-row">
+                    <label for="client-name">姓名</label>
+                    <input id="client-name" type="text" autocomplete="off">
+                </div>
+                <div class="form-row">
+                    <label for="client-contact">聯絡方式</label>
+                    <input id="client-contact" type="text" placeholder="電話 / LINE / Email / FB">
+                </div>
+                <div class="form-row">
+                    <label for="client-profession">職業</label>
+                    <input id="client-profession" type="text">
+                </div>
+                <div class="form-row">
+                    <label for="client-exerciseHabit">運動習慣</label>
+                    <input id="client-exerciseHabit" type="text">
+                </div>
+                <div class="form-row">
+                    <label for="client-medicalHistory">病史</label>
+                    <textarea id="client-medicalHistory" rows="3"></textarea>
+                </div>
+                <div class="form-row">
+                    <label for="client-notes">備註</label>
+                    <textarea id="client-notes" rows="3"></textarea>
+                </div>
+            </section>
+
+            <section class="list-section">
+                <div class="list-section-header">
+                    <h2 class="list-section-title">服務紀錄</h2>
+                    <button id="btn-create-record" class="btn-primary">新增紀錄</button>
+                </div>
+                <div id="record-list" class="list-container"></div>
+                <div id="record-pagination" class="pagination"></div>
+            </section>
+        </div>
+    </template>
+
+    <!-- M4：服務紀錄工作區 Record -->
+    <template id="tpl-record">
+        <div class="view view-record">
+            <header class="app-header">
+                <button id="btn-back-profile" class="btn-back">← 返回</button>
+                <h1 class="app-title">服務紀錄</h1>
+                <button id="btn-save-record" class="btn-text">儲存</button>
+            </header>
+
+            <div class="form-section">
+                <div class="form-row">
+                    <label for="record-date">日期</label>
+                    <input id="record-date" type="date">
+                </div>
+            </div>
+
+            <!-- 主訴區塊 -->
+            <section class="record-block">
+                <div class="record-block-header">
+                    <h2 class="record-block-title">主訴</h2>
+                    <button class="btn-tag-trigger" data-open-drawer="chiefComplaint">＋ 標籤</button>
+                </div>
+                <textarea id="record-chief-complaint" rows="4" placeholder="主訴內容…"></textarea>
+            </section>
+
+            <!-- 評估結果區塊 -->
+            <section class="record-block">
+                <div class="record-block-header">
+                    <h2 class="record-block-title">評估結果</h2>
+                    <button class="btn-tag-trigger" data-open-drawer="assessment">＋ 標籤</button>
+                </div>
+                <textarea id="record-assessment" rows="4" placeholder="評估內容…"></textarea>
+            </section>
+
+            <!-- 後測區塊 -->
+            <section class="record-block">
+                <div class="record-block-header">
+                    <h2 class="record-block-title">後測</h2>
+                    <button class="btn-tag-trigger" data-open-drawer="postTest">＋ 標籤</button>
+                </div>
+                <textarea id="record-post-test" rows="4" placeholder="後測內容…"></textarea>
+            </section>
+
+            <!-- 摘要區塊 -->
+            <section class="record-block">
+                <div class="record-block-header">
+                    <h2 class="record-block-title">摘要</h2>
+                    <button class="btn-tag-trigger" data-open-drawer="summary">＋ 標籤</button>
+                </div>
+                <textarea id="record-summary" rows="3" placeholder="摘要內容…"></textarea>
+            </section>
+        </div>
+    </template>
+
+    <!-- ═══ 分頁切換邏輯（設定頁專用，無業務邏輯） ══════════════════════════ -->
+    <script type="module">
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.tab-btn');
+            if (!btn) return;
+            const targetTab = btn.dataset.tab;
+            const view = btn.closest('.view-settings');
+            if (!view) return;
+
+            view.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-btn--active'));
+            view.querySelectorAll('.tab-panel').forEach(p => p.classList.add('tab-panel--hidden'));
+
+            btn.classList.add('tab-btn--active');
+            view.querySelector(`#tab-${targetTab}`)?.classList.remove('tab-panel--hidden');
+        });
+    </script>
+
+    <!-- ═══ 應用程式入口 ══════════════════════════════════════════════════════ -->
+    <script type="module">
+        import { initApp } from './dispatch_center/dispatcher.js';
+        initApp();
+    </script>
+
+    <!-- PeerJS CDN（P2P 同步依賴） -->
+    <script src="https://unpkg.com/peerjs@1/dist/peerjs.min.js"></script>
+
+</body>
+</html>
