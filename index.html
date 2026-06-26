@@ -17,9 +17,10 @@
 
     <!-- 全局凍結遮罩 -->
     <div id="global-freezer" style="display:none;">
-        <div class="freezer-content">
-            <div class="freezer-spinner"></div>
-            <p class="freezer-message">網路已斷開，系統暫停操作</p>
+        <div class="freezer-content" style="text-align: center;">
+            <div class="freezer-spinner" style="margin: 0 auto;"></div>
+            <p id="freezer-message" class="freezer-message" style="white-space: pre-wrap;">處理中，請稍候...</p>
+            <button id="btn-freezer-cancel" class="btn-secondary" style="display:none; margin-top: 16px;">取消操作</button>
         </div>
     </div>
 

@@ -3,7 +3,7 @@ import { ClientSchema, RecordSchema, TagSchema, ColdDirectorySchema } from '../s
 import { executeWrite, getAllRecords, getRecord, STORES } from '../database/idb_client.js';
 
 // ─── SystemLock 解耦（裁決：透過 CustomEvent，不 import dispatcher） ──────────
-const lock   = () => window.dispatchEvent(new CustomEvent('app:lock'));
+const lock   = (msg, onCancel) => window.dispatchEvent(new CustomEvent('app:lock', { detail: { msg, onCancel } }));
 const unlock = () => window.dispatchEvent(new CustomEvent('app:unlock'));
 
 // ─── Store 組合定義 ───────────────────────────────────────────────────────────
@@ -16,6 +16,12 @@ const SCOPE_STORES = {
 // ─── 設定頁入口（UI 骨架綁定） ───────────────────────────────────────────────
 
 export const loadSettings = () => {
+    // 返回按鈕
+    document.getElementById('btn-back-dashboard')?.addEventListener('click', () => {
+        window.location.hash = '#dashboard';
+    });
+
+    // 匯出按鈕
     // 匯出按鈕
     document.getElementById('btn-export-clients')?.addEventListener('click', () => exportJSON('clients'));
     document.getElementById('btn-export-tags')?.addEventListener('click',   () => exportJSON('tags'));
@@ -191,35 +197,43 @@ export const startP2PSend = async (scope) => {
     const confirmed = _showRedConfirm('即將透過 P2P 傳送資料，對方將完全覆蓋其本地資料，確定繼續？');
     if (!confirmed) return;
 
-    lock();
     try {
         const payload = {};
         for (const name of storeNames) {
             payload[name] = await getAllRecords(name);
         }
 
-        const peer = new Peer(); // PeerJS 全域變數，來自 CDN
+        // 方案確認：主動生成 6 位數 ID 滿足簡短好記需求
+        const peerId = Math.floor(100000 + Math.random() * 900000).toString();
+        let peer = null;
+        let timeout = null;
+
         await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
+            // 提供主動取消連線的回呼，確保記憶體釋放並大聲報錯中斷流程
+            const onCancel = () => {
+                if (timeout) clearTimeout(timeout);
+                if (peer) peer.destroy();
+                reject(new Error('已取消傳送操作'));
+            };
+
+            lock(`等待接收方連線...\n您的發送方 ID：${peerId}`, onCancel);
+
+            peer = new Peer(peerId);
+            timeout = setTimeout(() => {
                 peer.destroy();
-                reject(new Error('P2P 初始化超時，請檢查網路連線'));
-            }, 30000);
+                reject(new Error('等待連線超時 (60秒)，請檢查網路或重試'));
+            }, 60000); // 延長為 60 秒給予接收方足夠的輸入時間
 
             peer.on('open', (id) => {
-                // 顯示發送方 ID 供接收方輸入
                 const idDisplay = document.getElementById('p2p-sender-id');
                 if (idDisplay) idDisplay.textContent = id;
 
                 peer.on('connection', (conn) => {
-                    // 方案確認：一旦有首個接收方成功建立連線，立即呼叫 disconnect() 斷開信令伺服器。
-                    // 確保底層資料傳輸通道保持開啟，但徹底拒絕任何第三方的後續連線竊取資料，阻絕外流攻擊面。
-                    peer.disconnect();
-
+                    peer.disconnect(); // 建立連線後立即從公網目錄隱身，阻絕第三方惡意連線
                     conn.on('open', () => {
                         conn.send(JSON.stringify(payload));
                         clearTimeout(timeout);
                         resolve();
-                        // 資料傳輸屬非同步，延遲 5 秒後徹底銷毀實例釋放記憶體
                         setTimeout(() => peer.destroy(), 5000);
                     });
                 });
@@ -227,15 +241,14 @@ export const startP2PSend = async (scope) => {
 
             peer.on('error', (err) => {
                 clearTimeout(timeout);
-                peer.destroy();
+                if (peer) peer.destroy();
                 reject(new Error(`P2P 錯誤: ${err.message}`));
             });
         });
 
         alert('P2P 傳送成功');
     } catch (err) {
-        alert(`[P2P 傳送失敗] ${err.message}`);
-        throw err;
+        alert(`[P2P 傳送狀態] ${err.message}`);
     } finally {
         unlock();
     }
@@ -253,13 +266,23 @@ export const startP2PReceive = async () => {
     const confirmed = _showRedConfirm('接收後將完全覆蓋本地資料，確定繼續？');
     if (!confirmed) return;
 
-    lock();
     try {
+        let peer = null;
+        let timeout = null;
+
         const rawData = await new Promise((resolve, reject) => {
-            const peer = new Peer();
-            const timeout = setTimeout(() => {
+            const onCancel = () => {
+                if (timeout) clearTimeout(timeout);
+                if (peer) peer.destroy();
+                reject(new Error('已取消接收操作'));
+            };
+
+            lock('連線並接收資料中...', onCancel);
+
+            peer = new Peer();
+            timeout = setTimeout(() => {
                 peer.destroy();
-                reject(new Error('P2P 連線超時（30 秒），請確認發送方 ID 正確且對方已就緒'));
+                reject(new Error('P2P 連線超時，請確認發送方 ID 正確且對方尚未取消'));
             }, 30000);
 
             peer.on('open', () => {
@@ -278,6 +301,7 @@ export const startP2PReceive = async () => {
 
             peer.on('error', (err) => {
                 clearTimeout(timeout);
+                if (peer) peer.destroy();
                 reject(new Error(`P2P 初始化錯誤: ${err.message}`));
             });
         });
@@ -308,8 +332,7 @@ export const startP2PReceive = async () => {
         alert('P2P 接收成功，資料已同步');
         window.location.hash = '#dashboard';
     } catch (err) {
-        alert(`[P2P 接收失敗] ${err.message}`);
-        throw err;
+        alert(`[P2P 接收狀態] ${err.message}`);
     } finally {
         unlock();
     }

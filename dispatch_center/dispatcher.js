@@ -4,16 +4,31 @@ import { getTodayLocalISO } from '../schemas/models.js';
 // ─── SystemLock ───────────────────────────────────────────────────────────────
 // 直接操作 #global-freezer DOM，不抽象成 class（簡單至上原則）
 const SystemLock = {
-    acquire() {
+    acquire(msg = '處理中，請稍候...', onCancel = null) {
+        const msgEl = document.getElementById('freezer-message');
+        const cancelBtn = document.getElementById('btn-freezer-cancel');
+        if (msgEl) msgEl.textContent = msg;
+        
+        if (cancelBtn) {
+            if (onCancel) {
+                cancelBtn.style.display = 'inline-block';
+                cancelBtn.onclick = () => { onCancel(); this.release(); };
+            } else {
+                cancelBtn.style.display = 'none';
+                cancelBtn.onclick = null;
+            }
+        }
         document.getElementById('global-freezer').style.display = 'flex';
     },
     release() {
         document.getElementById('global-freezer').style.display = 'none';
+        const cancelBtn = document.getElementById('btn-freezer-cancel');
+        if (cancelBtn) cancelBtn.onclick = null;
     }
 };
 
 // 允許 sync_engine 透過 CustomEvent 觸發鎖定，避免循環依賴
-window.addEventListener('app:lock', () => SystemLock.acquire());
+window.addEventListener('app:lock', (e) => SystemLock.acquire(e.detail?.msg, e.detail?.onCancel));
 window.addEventListener('app:unlock', () => SystemLock.release());
 
 
@@ -31,7 +46,7 @@ const requestPersistentStorage = async () => {
 // ─── 斷線攔截 ─────────────────────────────────────────────────────────────────
 // 裁決 #2/#3：Dispatcher 只負責觸發 SystemLock，不清空表單
 window.addEventListener('offline', () => {
-    SystemLock.acquire();
+    SystemLock.acquire('網路已斷開，系統暫停操作');
 });
 
 window.addEventListener('online', () => {
