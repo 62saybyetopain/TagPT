@@ -13,9 +13,18 @@ const SCOPE_STORES = {
     full:     [STORES.CLIENTS, STORES.RECORDS, STORES.TAGS, STORES.COLD_DIRECTORY]
 };
 
+let _currentPeerId = '';
+const _refreshPeerId = () => {
+    _currentPeerId = Math.floor(100000 + Math.random() * 900000).toString();
+    const idDisplay = document.getElementById('p2p-sender-id');
+    if (idDisplay) idDisplay.textContent = _currentPeerId;
+};
+
 // ─── 設定頁入口（UI 骨架綁定） ───────────────────────────────────────────────
 
 export const loadSettings = () => {
+    _refreshPeerId(); // 方案確認：進入設定頁時立刻生成並顯示 ID，讓使用者在點擊傳送前就能看到並告知接收方。
+
     // 返回按鈕
     document.getElementById('btn-back-dashboard')?.addEventListener('click', () => {
         window.location.hash = '#dashboard';
@@ -198,35 +207,30 @@ export const startP2PSend = async (scope) => {
     if (!confirmed) return;
 
     try {
-        const payload = {};
-        for (const name of storeNames) {
-            payload[name] = await getAllRecords(name);
-        }
+            const payload = {};
+            for (const name of storeNames) {
+                payload[name] = await getAllRecords(name);
+            }
 
-        // 方案確認：主動生成 6 位數 ID 滿足簡短好記需求
-        const peerId = Math.floor(100000 + Math.random() * 900000).toString();
-        let peer = null;
-        let timeout = null;
+            let peer = null;
+            let timeout = null;
 
-        await new Promise((resolve, reject) => {
-            // 提供主動取消連線的回呼，確保記憶體釋放並大聲報錯中斷流程
-            const onCancel = () => {
-                if (timeout) clearTimeout(timeout);
-                if (peer) peer.destroy();
-                reject(new Error('已取消傳送操作'));
-            };
+            await new Promise((resolve, reject) => {
+                const onCancel = () => {
+                    if (timeout) clearTimeout(timeout);
+                    if (peer) peer.destroy();
+                    reject(new Error('已取消傳送操作'));
+                };
 
-            lock(`等待接收方連線...\n您的發送方 ID：${peerId}`, onCancel);
+                lock(`等待接收方連線...\n您的發送方 ID：${_currentPeerId}`, onCancel);
 
-            peer = new Peer(peerId);
-            timeout = setTimeout(() => {
-                peer.destroy();
-                reject(new Error('等待連線超時 (60秒)，請檢查網路或重試'));
-            }, 60000); // 延長為 60 秒給予接收方足夠的輸入時間
+                peer = new Peer(_currentPeerId); // 方案確認：使用載入頁面時已生成好的 ID，確保 UI 顯示與底層連線使用的是同一個。
+                timeout = setTimeout(() => {
+                    peer.destroy();
+                    reject(new Error('等待連線超時 (60秒)，請檢查網路或重試'));
+                }, 60000); 
 
-            peer.on('open', (id) => {
-                const idDisplay = document.getElementById('p2p-sender-id');
-                if (idDisplay) idDisplay.textContent = id;
+                peer.on('open', () => {
 
                 peer.on('connection', (conn) => {
                     peer.disconnect(); // 建立連線後立即從公網目錄隱身，阻絕第三方惡意連線
@@ -251,6 +255,7 @@ export const startP2PSend = async (scope) => {
         alert(`[P2P 傳送狀態] ${err.message}`);
     } finally {
         unlock();
+        _refreshPeerId(); // 方案確認：無論連線成功、失敗或手動取消，結束後強制刷新一組新 ID，避免下一次傳送時出現 PeerJS 狀態殘留的問題。
     }
 };
 

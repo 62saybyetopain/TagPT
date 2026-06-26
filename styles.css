@@ -2,25 +2,23 @@
 
 /* ═══ 設計令牌 ══════════════════════════════════════════════════════════════ */
 :root {
-    --color-bg:         #F7F9FB;
+    --color-bg:         #F9F8F6; /* 暖米色背景 */
     --color-surface:    #FFFFFF;
-    --color-navy:       #1A2B3C;
-    --color-green:      #2D6A4F;
-    --color-red:        #C0392B;
-    --color-orange:     #F39C12;
-    --color-border:     #D8E0E8;
-    --color-text:       #1A2B3C;
-    --color-text-muted: #6B7C8D;
-    --color-accent:     #1A2B3C; /* 卡片左側識別條 */
+    --color-navy:       #4A4A4A; /* 柔和炭灰取代深藍 */
+    --color-green:      #5E745A;
+    --color-red:        #B45E5E; /* 莫蘭迪紅 */
+    --color-orange:     #D49B54;
+    --color-border:     #EAE6E1;
+    --color-text:       #3E3A39; /* 溫和的深灰色字體 */
+    --color-text-muted: #8E8A85;
+    --color-accent:     #B0A89F; /* 卡片左側識別條：淺灰棕色 */
 
     --font-body: -apple-system, 'Noto Sans TC', 'PingFang TC', sans-serif;
-
-    --radius:    8px;
-    --radius-sm: 4px;
+    --radius:    10px; /* 稍微圓潤一點 */
+    --radius-sm: 6px;
     --gap:       16px;
     --gap-sm:    8px;
     --gap-xs:    4px;
-
     --header-h:  52px;
     --fab-size:  52px;
 }
