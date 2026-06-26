@@ -404,11 +404,11 @@ textarea { resize: vertical; }
 }
 
 .form-row label {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    /* 方案確認：將 text-muted 改為 navy 主色，大幅加深對比度，提升可讀性 */
+    color: var(--color-navy);
+    letter-spacing: 0.04em;
 }
 
 .form-row input,
@@ -619,7 +619,8 @@ textarea { resize: vertical; }
 .tag-sub-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--color-text-muted);
+    /* 方案確認：將原本淡灰色的 text-muted 改為與主要標籤相同的主色調 (navy) */
+    color: var(--color-navy); 
     padding: 6px 0;
     cursor: pointer;
     list-style: none;
