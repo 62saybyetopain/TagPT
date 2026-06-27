@@ -216,6 +216,7 @@ const _bindDrawerEvents = () => {
         resetModifiers();
         _closeDrawer();
     });
+}; // 方案確認：補回 _bindDrawerEvents 遺失的結束大括號
 
 const _openDrawer = async (target) => {
     const drawer = document.getElementById('tag-drawer');
