@@ -33,18 +33,23 @@
             </div>
 
             <!-- 修飾鍵區（主訴專用，其他區塊隱藏） -->
-            <div id="drawer-modifiers" class="drawer-modifiers"></div>
-
-            <!-- 常用標籤區 -->
-            <div class="drawer-section">
-                <p class="drawer-section-label">常用</p>
-                <div id="drawer-favorites" class="drawer-tag-grid"></div>
+            <div class="drawer-search-area">
+                <input id="drawer-search-input" type="search" placeholder="搜尋標籤 (支援關鍵字)..." autocomplete="off">
+                <div id="drawer-staging-area" class="drawer-staging-area">
+                    </div>
             </div>
 
-            <!-- 主要標籤區 -->
+            <div class="drawer-tabs">
+                <button class="drawer-tab-btn active" data-tab="favorite">常用</button>
+                <button class="drawer-tab-btn" data-tab="anatomy">部位/解剖</button>
+                <button class="drawer-tab-btn" data-tab="symptom">主觀描述</button>
+                <button class="drawer-tab-btn" data-tab="clinical">評估/姿勢</button>
+                <button class="drawer-tab-btn" data-tab="other">其他/衛教</button>
+            </div>
+
             <div class="drawer-section">
-                <p class="drawer-section-label">全部標籤</p>
-                <div id="drawer-tags" class="drawer-tag-grid"></div>
+                <div id="drawer-modifiers" class="drawer-modifiers"></div>
+                <div id="drawer-tags-content"></div>
             </div>
 
             <div class="drawer-footer">
@@ -254,7 +259,7 @@
                 <div class="record-block-header">
                     <h2 class="record-block-title">摘要</h2>
                     <div style="display: flex; gap: var(--gap-sm);">
-                        <button id="btn-copy-to-summary" class="btn-tag-trigger" style="color: var(--color-text-muted); border-color: var(--color-border);">⎘ 複製前文</button>
+                        <button id="btn-copy-to-summary" class="btn-tag-trigger">⎘ 複製前文</button>
                         <button class="btn-tag-trigger" data-open-drawer="summary">＋ 標籤</button>
                     </div>
                 </div>

@@ -1,10 +1,7 @@
 // modules/record_controller.js
 import { RecordSchema, getTodayLocalISO } from '../schemas/models.js';
 import { executeWrite, getRecord, STORES } from '../database/idb_client.js';
-import {
-    getTagsGrouped, getFavoriteTags,
-    toggleModifier, buildTagString, resetModifiers, getActiveModifiers
-} from './tag_manager.js';
+import { getTagsGrouped } from './tag_manager.js';
 
 // ─── RAM 暫存狀態（生命週期：載入表單 → 儲存/離開） ──────────────────────────
 let _state = {
@@ -17,20 +14,23 @@ let _state = {
     summary: ''
 };
 
-// 當前抽屜目標區塊（'chiefComplaint' | 'assessment' | 'postTest' | 'summary'）
+// 當前抽屜目標區塊與暫存狀態
 let _drawerTarget = null;
+let _stagedTags = []; // 將暫存區狀態提升至模組頂部，確保所有流程都能安全存取
 
 const _resetState = () => {
     _state = { clientId: null, recordId: null, date: null,
                 chiefComplaint: '', assessment: '', postTest: '', summary: '' };
     _drawerTarget = null;
-    resetModifiers();
+    _stagedTags = []; // 方案確認：直接在 controller 重置暫存陣列，移除對 tag_manager 舊狀態函式的依賴。
 };
 
 // ─── 斷線抹除（裁決 #2/#3：record_controller 自行監聽，不依賴 dispatcher） ───
+// 此監聽器在模組載入時即全域綁定；加 hash 守衛確保只有使用者實際在紀錄頁時才重置與跳轉，
+// 避免在 dashboard 等其他頁面觸發多餘的 hashchange，並消除與 dispatcher SystemLock 的競態
 window.addEventListener('offline', () => {
+    if (!window.location.hash.startsWith('#record')) return;
     _resetState();
-    // 清空 DOM 表單（若當前在紀錄頁）
     _clearFormDOM();
     window.location.hash = '#dashboard';
 });
@@ -156,98 +156,65 @@ const _bindFormEvents = (clientId) => {
     });
 };
 
-// ─── 抽屜 UI ──────────────────────────────────────────────────────────────────
+// ─── 抽屜 UI (暫存區與分頁機制) ───────────────────────────────────────────────
 
-// 每個觸發按鈕帶有 data-target 指定插入目標，以及 data-filter 指定標籤集合
-// 合法 filter 值：'chiefComplaint' | 'assessment' | 'postTest' | 'summary'
-const TAG_FILTER = {
-    chiefComplaint: (grouped) => _flattenGroups(grouped, ['anatomy', 'symptom', 'favorite']),
-    assessment:     (grouped) => _flattenGroups(grouped, ['clinical', 'other', 'favorite']),
-    postTest:       (grouped) => _flattenGroups(grouped, ['all']),
-    summary:        (grouped) => _flattenGroups(grouped, ['all'])
-};
-
-const _flattenGroups = (grouped, filters) => {
-    if (filters.includes('all')) {
-        return Object.entries(grouped).flatMap(([cat, val]) =>
-            cat === 'anatomy'
-                ? Object.values(val).flat()
-                : val
-        );
-    }
-    const result = [];
-    filters.forEach(f => {
-        if (f === 'favorite') return; // favorites 另外處理
-        if (f === 'anatomy' && grouped.anatomy) {
-            Object.values(grouped.anatomy).flat().forEach(t => result.push(t));
-        } else if (grouped[f]) {
-            grouped[f].forEach(t => result.push(t));
-        }
-    });
-    return result;
-};
+let _allTagsCache = []; // 用於搜尋與切換分頁的快取
 
 const _bindDrawerEvents = () => {
-    // 各區塊的「+ 標籤」按鈕
     document.querySelectorAll('[data-open-drawer]').forEach(btn => {
         btn.addEventListener('click', async () => {
-            _drawerTarget = btn.dataset.openDrawer; // e.g. 'chiefComplaint'
-            if (!TAG_FILTER[_drawerTarget]) {
-                throw new Error(`[RECORD_ERROR] 非法抽屜目標: "${_drawerTarget}"`);
-            }
-            resetModifiers(); // 規格：每次開啟抽屜重置修飾鍵狀態
-            await _openDrawer(_drawerTarget);
+            _drawerTarget = btn.dataset.openDrawer;
+            _stagedTags = []; // 清空暫存區
+            await _openDrawer();
         });
     });
 
-    // 插入並關閉
     document.getElementById('btn-drawer-insert')?.addEventListener('click', () => {
-        // 方案確認：允許單獨插入修飾鍵（如只點了"前面"）。檢查記憶體中是否有殘留的修飾鍵，若有則化為文字附加，解決只有修飾鍵時無法輸出的問題。
-        const activeMods = getActiveModifiers();
-        if (activeMods.length > 0) {
-            _appendToTarget(activeMods.join(''));
-            resetModifiers();
+        if (_stagedTags.length > 0) {
+            _appendToTarget(_stagedTags.join('')); // 組合暫存區標籤並插入
         }
         _closeDrawer();
     });
 
-    // 關閉鈕（不插入）
-    document.getElementById('btn-drawer-close')?.addEventListener('click', () => {
-        resetModifiers();
-        _closeDrawer();
+    document.getElementById('btn-drawer-close')?.addEventListener('click', _closeDrawer);
+
+    // 搜尋功能綁定
+    const searchInput = document.getElementById('drawer-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => _renderTagsContent(e.target.value));
+    }
+
+    // 分頁切換綁定
+    document.querySelectorAll('.drawer-tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.drawer-tab-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            if (searchInput) searchInput.value = ''; // 切換分頁時清空搜尋
+            _renderTagsContent();
+        });
     });
-}; // 方案確認：補回 _bindDrawerEvents 遺失的結束大括號
+};
 
-const _openDrawer = async (target) => {
+const _openDrawer = async () => {
     const drawer = document.getElementById('tag-drawer');
-    if (!drawer) throw new Error('[RECORD_ERROR] 找不到 #tag-drawer');
+    if (!drawer) return;
 
-    const [grouped, favorites] = await Promise.all([
-        getTagsGrouped(),
-        getFavoriteTags()
-    ]);
+    // 載入所有標籤建立快取
+    const grouped = await getTagsGrouped();
+    _allTagsCache = Object.values(grouped).flatMap(group => 
+        group instanceof Array ? group : Object.values(group).flat()
+    );
 
-    const filterFn = TAG_FILTER[target];
-    const tags = filterFn(grouped);
+    _renderStagingArea();
+    _renderModifiers(document.getElementById('drawer-modifiers'));
+    
+    // 預設回到「常用」分頁並清空搜尋
+    document.querySelectorAll('.drawer-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.drawer-tab-btn[data-tab="favorite"]')?.classList.add('active');
+    const searchInput = document.getElementById('drawer-search-input');
+    if (searchInput) searchInput.value = '';
 
-    // 渲染修飾鍵（規格確認：所有區塊皆固定顯示，不僅限於主訴）
-    const modifierArea = document.getElementById('drawer-modifiers');
-    if (modifierArea) {
-        modifierArea.style.display = 'flex';
-        _renderModifiers(modifierArea);
-    }
-
-    // 渲染常用標籤
-    const favoriteArea = document.getElementById('drawer-favorites');
-    if (favoriteArea) {
-        _renderTagButtons(favoriteArea, favorites, true);
-    }
-
-    // 渲染主要標籤
-    const tagArea = document.getElementById('drawer-tags');
-    if (tagArea) {
-        _renderTagButtons(tagArea, tags, false);
-    }
+    _renderTagsContent();
 
     drawer.showModal ? drawer.showModal() : (drawer.style.display = 'flex');
 };
@@ -259,51 +226,108 @@ const _closeDrawer = () => {
     _drawerTarget = null;
 };
 
-// ─── 標籤按鈕渲染 ─────────────────────────────────────────────────────────────
+// 方案確認：建立獨立的視覺同步擴充函式，利用 Array.includes 進行確定性狀態比對，避免與 DOM 結構產生多餘的跨檔案耦合。
+const _syncButtonsVisualState = () => {
+    document.getElementById('drawer-modifiers')?.querySelectorAll('.modifier-btn').forEach(btn => {
+        btn.classList.toggle('tag-selected', _stagedTags.includes(btn.textContent));
+    });
+    document.getElementById('drawer-tags-content')?.querySelectorAll('.tag-btn').forEach(btn => {
+        btn.classList.toggle('tag-selected', _stagedTags.includes(btn.textContent));
+    });
+};
+
+const _renderStagingArea = () => {
+    const container = document.getElementById('drawer-staging-area');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (_stagedTags.length === 0) {
+        container.innerHTML = '<span style="color: var(--color-text-muted); font-size: 0.85rem; padding: 4px;">尚未選擇標籤...</span>';
+        _syncButtonsVisualState(); // 原因：暫存區歸零時，需即時重置下方所有按鈕的選取高亮狀態
+        return;
+    }
+
+    _stagedTags.forEach((text, index) => {
+        const chip = document.createElement('div');
+        chip.className = 'staging-chip';
+        chip.textContent = `${text} ✕`;
+        chip.addEventListener('click', () => {
+            _stagedTags.splice(index, 1);
+            _renderStagingArea();
+        });
+        container.appendChild(chip);
+    });
+    _syncButtonsVisualState(); // 原因：暫存資料異動時，同步觸發下方視圖的狀態重新著色
+};
 
 const _renderModifiers = (container) => {
+    if (!container) return;
     container.innerHTML = '';
     ['前面', '後面', '左側', '右側'].forEach(mod => {
         const btn = document.createElement('button');
         btn.className = 'modifier-btn';
         btn.textContent = mod;
         btn.addEventListener('click', () => {
-            const active = toggleModifier(mod);
-            // 更新所有修飾鍵按鈕的視覺狀態
-            container.querySelectorAll('.modifier-btn').forEach(b => {
-                b.classList.toggle('tag-selected', active.includes(b.textContent));
-            });
+            const idx = _stagedTags.indexOf(mod);
+            if (idx > -1) {
+                _stagedTags.splice(idx, 1); // 原因：點擊已存在的修飾鍵時執行移除，達成原處點擊切換反選的行為
+            } else {
+                _stagedTags.push(mod);
+            }
+            _renderStagingArea();
         });
         container.appendChild(btn);
     });
 };
 
-const _renderTagButtons = (container, tags, isFavorite) => {
+const _renderTagsContent = (searchQuery = '') => {
+    const container = document.getElementById('drawer-tags-content');
+    const activeTab = document.querySelector('.drawer-tab-btn.active')?.dataset.tab || 'favorite';
+    if (!container) return;
+
     container.innerHTML = '';
-    tags.forEach(tag => {
+    let filteredTags = [];
+
+    // 搜尋模式：無視分頁，全域搜尋
+    if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        filteredTags = _allTagsCache.filter(t => t.text.toLowerCase().includes(q));
+    } else {
+        // 分頁模式
+        if (activeTab === 'favorite') {
+            filteredTags = _allTagsCache.filter(t => t.isFavorite);
+        } else {
+            filteredTags = _allTagsCache.filter(t => t.category === activeTab);
+        }
+    }
+
+    if (filteredTags.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-muted); font-size: 0.85rem;">無符合的標籤</p>';
+        return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'drawer-tag-grid';
+    
+    filteredTags.forEach(tag => {
         const btn = document.createElement('button');
-        btn.className = isFavorite ? 'tag-btn tag-btn--favorite' : 'tag-btn';
+        btn.className = 'tag-btn';
+        if (tag.isFavorite && !searchQuery) btn.classList.add('tag-btn--favorite');
         btn.textContent = tag.text;
-        btn.dataset.tagId = tag.id;
         btn.addEventListener('click', () => {
-            // 視覺動畫（規格：微縮放或變色）
-            btn.classList.add('tag-selected');
-            setTimeout(() => btn.classList.remove('tag-selected'), 300);
-
-            // 組合修飾鍵並附加至目標 textarea
-            const str = buildTagString(tag.text);
-            _appendToTarget(str);
-
-            // 修飾鍵點選後已被 buildTagString 清空，更新修飾鍵按鈕視覺
-            const modifierArea = document.getElementById('drawer-modifiers');
-            if (modifierArea) {
-                modifierArea.querySelectorAll('.modifier-btn').forEach(b => {
-                    b.classList.remove('tag-selected');
-                });
+            const idx = _stagedTags.indexOf(tag.text);
+            if (idx > -1) {
+                _stagedTags.splice(idx, 1); // 原因：再次點擊普通標籤按鈕時，將其自暫存狀態陣列中剔除
+            } else {
+                _stagedTags.push(tag.text);
             }
+            _renderStagingArea();
         });
-        container.appendChild(btn);
+        grid.appendChild(btn);
     });
+    
+    container.appendChild(grid);
+    _syncButtonsVisualState(); // 原因：當使用者搜尋或切換分頁時，新渲染出來的按鈕必須立刻同步當前的勾選狀態
 };
 
 const _appendToTarget = (str) => {
@@ -316,17 +340,13 @@ const _appendToTarget = (str) => {
         summary:        'record-summary'
     };
     const elId = targetMap[_drawerTarget];
-    if (!elId) {
-        throw new Error(`[RECORD_ERROR] 找不到目標欄位對應: "${_drawerTarget}"`);
-    }
     const el = document.getElementById(elId);
-    if (!el) throw new Error(`[RECORD_ERROR] 找不到 DOM 元素 #${elId}`);
+    if (!el) return;
 
-    // 附加文字（以空格分隔，若已有內容）
-    el.value = el.value ? `${el.value} ${str}` : str;
-    _state[_drawerTarget] = el.value; // 同步回 RAM
+    el.value = el.value ? `${el.value}${str}` : str;
+    _state[_drawerTarget] = el.value; 
 };
-
+// 方案確認：廢棄原有的 toggleModifier，將點擊標籤/修飾鍵的行為統一簡化為「Push 字串至 _stagedTags 陣列並重繪」。使用者可以在暫存區點擊 ✕ 刪除，最後按下插入時陣列直接 .join('') 輸出純文字。
 // ─── 儲存紀錄 ─────────────────────────────────────────────────────────────────
 
 const _saveRecord = async () => {

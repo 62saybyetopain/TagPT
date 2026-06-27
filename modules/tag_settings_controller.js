@@ -1,6 +1,6 @@
 // modules/tag_settings_controller.js
 import {
-    getTagsGrouped, getFavoriteTags,
+    getTagsGrouped,
     createTag, deleteTag, toggleFavorite
 } from './tag_manager.js';
 
@@ -11,11 +11,12 @@ const ANATOMY_SUB_CATEGORIES = [
 ];
 
 const TAG_CATEGORIES = [
-    { key: 'anatomy',  label: '身體部位' },
-    { key: 'symptom',  label: '個案主訴症狀' },
-    { key: 'clinical', label: '臨床判斷' },
-    { key: 'other',    label: '其他標籤' }
+    { key: 'anatomy',  label: '部位/解剖' },
+    { key: 'symptom',  label: '主觀描述' },
+    { key: 'clinical', label: '評估/姿勢' },
+    { key: 'other',    label: '其他/衛教' }
 ];
+// 方案確認：直接在此修改 Label，底層資料庫的 key (anatomy/symptom...) 保持不變，這樣您匯入舊資料時就能無縫接軌新分類。
 
 // ─── 設定頁標籤 UI 入口 ───────────────────────────────────────────────────────
 

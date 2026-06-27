@@ -2,58 +2,6 @@
 import { TagSchema } from '../schemas/models.js';
 import { executeWrite, getAllRecords, getRecord, STORES } from '../database/idb_client.js';
 
-// ─── 組合鍵暫存狀態（RAM only，不寫入 DB）────────────────────────────────────
-// 點擊順序決定字串順序，例：先點「前面」再點「右側」→「前面右側」
-let _modifierKeys = []; // 最多存放修飾鍵文字，順序由點擊順序決定
-
-const MODIFIER_OPTIONS = ['前面', '後面', '左側', '右側'];
-
-/**
- * 切換修飾鍵選取狀態。已選則移除，未選則加入。
- * @param {string} modifier - 修飾鍵文字，必須是 MODIFIER_OPTIONS 之一
- * @returns {string[]} 當前已選修飾鍵陣列（供 Controller 更新 UI）
- */
-export const toggleModifier = (modifier) => {
-    if (!MODIFIER_OPTIONS.includes(modifier)) {
-        throw new Error(`[TAG_ERROR] 非法修飾鍵: "${modifier}"，合法值為 ${MODIFIER_OPTIONS.join('、')}`);
-    }
-    const idx = _modifierKeys.indexOf(modifier);
-    if (idx === -1) {
-        _modifierKeys.push(modifier);
-    } else {
-        _modifierKeys.splice(idx, 1);
-    }
-    return [..._modifierKeys];
-};
-
-/**
- * 將當前修飾鍵與部位標籤合併為字串，並清空修飾鍵狀態。
- * @param {string} tagText - 部位或標籤文字
- * @returns {string} 合併後的純文字字串，例：「前面右側肩膀」
- */
-export const buildTagString = (tagText) => {
-    if (!tagText || typeof tagText !== 'string') {
-        throw new Error('[TAG_ERROR] buildTagString 收到無效的標籤文字');
-    }
-    const result = [..._modifierKeys, tagText].join('');
-    _modifierKeys = []; // 插入後清空，避免殘留影響下次操作
-    return result;
-};
-
-/**
- * 清空修飾鍵狀態（例：關閉抽屜時重置）。
- */
-export const resetModifiers = () => {
-    _modifierKeys = [];
-};
-
-/**
- * 讀取當前修飾鍵狀態（供 Controller 渲染 UI 用）。
- * @returns {string[]}
- */
-export const getActiveModifiers = () => [..._modifierKeys];
-
-
 // ─── 標籤查詢 ─────────────────────────────────────────────────────────────────
 
 /**
@@ -79,15 +27,7 @@ export const getTagsGrouped = async () => {
         return acc;
     }, {});
 };
-
-/**
- * 取得所有常用標籤（isFavorite === true）。
- * @returns {Promise<Object[]>}
- */
-export const getFavoriteTags = async () => {
-    const allTags = await getAllRecords(STORES.TAGS);
-    return allTags.filter(tag => tag.isFavorite === true);
-};
+// 方案確認：徹底移除冗餘的修飾鍵陣列狀態與 getFavoriteTags 等未使用的方法，使 tag_manager 成為純粹與 DB 溝通的 Layer，符合單一職責原則。
 
 
 // ─── 標籤 CRUD ────────────────────────────────────────────────────────────────

@@ -31,20 +31,19 @@ export const loadSettings = () => {
     });
 
     // 匯出按鈕
-    // 匯出按鈕
     document.getElementById('btn-export-clients')?.addEventListener('click', () => exportJSON('clients'));
     document.getElementById('btn-export-tags')?.addEventListener('click',   () => exportJSON('tags'));
     document.getElementById('btn-export-full')?.addEventListener('click',   () => exportJSON('full'));
 
     // 匯入按鈕（觸發 file input）
     document.getElementById('btn-import-clients')?.addEventListener('click', () => {
-        _triggerFileInput('import-file-clients', (data) => importJSON(data, 'clients'));
+        _triggerFileInput((data) => importJSON(data, 'clients'));
     });
     document.getElementById('btn-import-tags')?.addEventListener('click', () => {
-        _triggerFileInput('import-file-tags', (data) => importJSON(data, 'tags'));
+        _triggerFileInput((data) => importJSON(data, 'tags'));
     });
     document.getElementById('btn-import-full')?.addEventListener('click', () => {
-        _triggerFileInput('import-file-full', (data) => importJSON(data, 'full'));
+        _triggerFileInput((data) => importJSON(data, 'full'));
     });
 
     // P2P 按鈕
@@ -175,6 +174,13 @@ export const exportColdData = async (cutoffDate) => {
         const payload = { clients: coldClients, records: coldRecords };
         _downloadJSON(payload, `physio-cold-${cutoffDate}.json`);
 
+        // _downloadJSON 是同步的 a.click()，無法確認瀏覽器是否真正完成儲存；
+        // 要求使用者主動確認檔案已存在裝置後才執行不可逆刪除，為純前端環境下的最小有效防護
+        const downloadConfirmed = window.confirm(
+            `請確認檔案「physio-cold-${cutoffDate}.json」已成功下載至您的裝置。\n確認後將永久刪除這 ${coldClients.length} 筆個案的熱資料。`
+        );
+        if (!downloadConfirmed) return;
+
         // 同一 Transaction：刪熱資料 + 寫冷目錄
         await executeWrite(
             [STORES.CLIENTS, STORES.RECORDS, STORES.COLD_DIRECTORY],
@@ -234,12 +240,19 @@ export const startP2PSend = async (scope) => {
 
                 peer.on('connection', (conn) => {
                     peer.disconnect(); // 建立連線後立即從公網目錄隱身，阻絕第三方惡意連線
-                    conn.on('open', () => {
+                    // PeerJS 在 peer.on('connection') 觸發時連線已開啟，conn.on('open') 不會再觸發；
+                    // 以 conn.open 判斷當前狀態，若尚未開啟則回退監聽，確保兩種時序都能送出資料
+                    const doSend = () => {
                         conn.send(JSON.stringify(payload));
                         clearTimeout(timeout);
                         resolve();
                         setTimeout(() => peer.destroy(), 5000);
-                    });
+                    };
+                    if (conn.open) {
+                        doSend();
+                    } else {
+                        conn.on('open', doSend);
+                    }
                 });
             });
 
@@ -363,7 +376,8 @@ const _downloadJSON = (payload, filename) => {
     URL.revokeObjectURL(url);
 };
 
-const _triggerFileInput = (inputId, callback) => {
+// inputId 參數已移除：函式從未使用傳入的 ID，始終動態建立 <input>，保留死參數會誤導維護者
+const _triggerFileInput = (callback) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';

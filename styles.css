@@ -139,6 +139,8 @@ textarea { resize: vertical; }
 
 .drawer-title { font-size: 1rem; font-weight: 600; }
 
+#btn-drawer-close { color: var(--color-navy); }
+
 .drawer-modifiers {
     display: flex;
     flex-wrap: wrap;
@@ -734,7 +736,84 @@ textarea { resize: vertical; }
     outline: 2px solid var(--color-navy);
     outline-offset: 2px;
 }
+/* ═══ 標籤抽屜新結構：搜尋、暫存區與分頁 ═══ */
+.drawer-search-area {
+    padding: var(--gap-sm) var(--gap);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-sm);
+    flex-shrink: 0;
+}
 
+#drawer-search-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    outline: none;
+}
+#drawer-search-input:focus { border-color: var(--color-navy); }
+
+.drawer-staging-area {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 32px;
+    padding: 4px;
+    background: #EEF2F7;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--color-border);
+}
+
+.staging-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: var(--color-navy);
+    color: #fff;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    animation: popIn 0.2s ease-out;
+}
+@keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+.drawer-tabs {
+    display: flex;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+    scrollbar-width: none;
+}
+.drawer-tabs::-webkit-scrollbar { display: none; }
+
+.drawer-tab-btn {
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+}
+.drawer-tab-btn.active {
+    color: var(--color-navy);
+    border-bottom-color: var(--color-navy);
+}
+
+.drawer-modifiers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-xs);
+    margin-bottom: var(--gap);
+    padding-bottom: var(--gap-sm);
+    border-bottom: 1px dashed var(--color-border);
+}
+
+/* 讓原本的標籤按鈕在被選中時不再變色（因為已經飛入暫存區） */
+.tag-btn:active { background: #EEF2F7; }
 /* ═══ 減少動畫（使用者偏好） ════════════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: reduce) {
