@@ -136,6 +136,24 @@ const _bindFormEvents = (clientId) => {
     document.getElementById('btn-back-profile')?.addEventListener('click', () => {
         window.location.hash = `#client/${clientId}`;
     });
+
+    // 方案確認：從記憶體狀態 (_state) 讀取已輸入的值，若有內容則加上括號標頭組合，最後將字串附加到摘要 DOM 並且即時同步回 _state，維持記憶體與視圖的一致性。
+    document.getElementById('btn-copy-to-summary')?.addEventListener('click', () => {
+        const parts = [];
+        if (_state.chiefComplaint?.trim()) parts.push(`【主訴】${_state.chiefComplaint.trim()}`);
+        if (_state.assessment?.trim()) parts.push(`【評估】${_state.assessment.trim()}`);
+        if (_state.postTest?.trim()) parts.push(`【後測】${_state.postTest.trim()}`);
+        
+        if (parts.length === 0) return;
+        
+        const combinedText = parts.join('\n');
+        const summaryEl = document.getElementById('record-summary');
+        if (summaryEl) {
+            // 若摘要已有些許文字，自動換行後再貼上；若為空則直接貼上
+            summaryEl.value = summaryEl.value ? `${summaryEl.value}\n${combinedText}` : combinedText;
+            _state.summary = summaryEl.value; 
+        }
+    });
 };
 
 // ─── 抽屜 UI ──────────────────────────────────────────────────────────────────

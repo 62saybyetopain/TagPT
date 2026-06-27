@@ -276,7 +276,10 @@
             <section class="record-block">
                 <div class="record-block-header">
                     <h2 class="record-block-title">摘要</h2>
-                    <button class="btn-tag-trigger" data-open-drawer="summary">＋ 標籤</button>
+                    <div style="display: flex; gap: var(--gap-sm);">
+                        <button id="btn-copy-to-summary" class="btn-tag-trigger" style="color: var(--color-text-muted); border-color: var(--color-border);">⎘ 複製前文</button>
+                        <button class="btn-tag-trigger" data-open-drawer="summary">＋ 標籤</button>
+                    </div>
                 </div>
                 <textarea id="record-summary" rows="3" placeholder="摘要內容…"></textarea>
             </section>

@@ -40,11 +40,21 @@ export const loadDashboard = async (page = 0) => {
     if (!searchInput) throw new Error('[PROFILE_ERROR] 找不到 #dashboard-search');
     searchInput.addEventListener('input', () => {
         const q = searchInput.value.trim().toLowerCase();
-        const filtered = _dashboardClients.filter(c =>
-            c.name.toLowerCase().includes(q) ||
-            c.phone.toLowerCase().includes(q) ||
-            c.lastServiceDate.includes(q)
-        );
+        const filtered = _dashboardClients.filter(c => {
+            // 方案確認：將所有可能存在的文字欄位收集起來，過濾掉 undefined/null 後合併為一個大字串。
+            // 徹底免疫 TypeError 崩潰，且完美相容舊版 contact 欄位，確保姓名與日期搜尋正常運作。
+            const searchableText = [
+                c.name,
+                c.phone,
+                c.contact, // 納入舊資料欄位
+                c.line,
+                c.fb,
+                c.email,
+                c.lastServiceDate
+            ].filter(Boolean).join(' ').toLowerCase();
+            
+            return searchableText.includes(q);
+        });
         _renderDashboardList(filtered, 0);
     });
 
