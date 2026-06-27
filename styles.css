@@ -89,23 +89,23 @@ textarea { resize: vertical; }
 
 /* ═══ 標籤抽屜 ══════════════════════════════════════════════════════════════ */
 
+/* 抽屜改為滿版固定視窗：dialog 預設有 max-height/max-width 限制，需全部覆寫為 inset:0；
+   視窗高度固定為 100dvh（動態視口高度，正確扣除手機網址列），標籤增減只在 flex:1 的
+   .drawer-section 內捲動，外層容器高度永不改變 */
 #tag-drawer {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
+    inset: 0;
     width: 100%;
     max-width: 100%;
-    max-height: 70vh;
+    height: 100dvh;
+    max-height: 100dvh;
     margin: 0;
     padding: 0;
     border: none;
-    border-radius: var(--radius) var(--radius) 0 0;
+    border-radius: 0;
     background: var(--color-surface);
     z-index: 800;
     overflow: hidden;
-    /* 滑入動畫 */
     transform: translateY(100%);
     transition: transform 0.28s ease-out;
 }
@@ -125,7 +125,6 @@ textarea { resize: vertical; }
     display: flex;
     flex-direction: column;
     height: 100%;
-    max-height: 70vh;
 }
 
 .drawer-header {
@@ -826,7 +825,8 @@ textarea { resize: vertical; }
 @media (min-width: 480px) {
     body { display: flex; justify-content: center; background: #D8E0E8; }
     #app, #global-freezer, #eviction-warning-banner { max-width: 480px; width: 100%; }
-    #tag-drawer { max-width: 480px; left: 50%; transform: translateX(-50%) translateY(100%); }
+    /* 桌面版限制寬度居中，高度仍維持滿版固定 */
+    #tag-drawer { max-width: 480px; left: 50%; transform: translateX(-50%) translateY(100%); border-radius: 0; }
     #tag-drawer[open] { transform: translateX(-50%) translateY(0); }
     .btn-fab { right: calc(50% - 240px + var(--gap)); }
 }
