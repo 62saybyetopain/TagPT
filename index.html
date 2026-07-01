@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PhysioApp</title>
     <link rel="stylesheet" href="styles.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -100,6 +101,12 @@
 
             <!-- 分頁 A：匯入匯出 -->
             <div id="tab-io" class="tab-panel">
+                <section class="settings-section">
+                    <h2 class="settings-section-title">Google Drive 備份</h2>
+                    <p class="settings-hint">備份與還原使用你的 Google 帳號，檔案僅存於你自己的雲端硬碟。</p>
+                    <button id="btn-drive-backup"  class="btn-secondary btn-full">☁ 備份至 Google Drive</button>
+                    <button id="btn-drive-restore" class="btn-secondary btn-full">⬇ 從 Google Drive 還原</button>
+                </section>
                 <section class="settings-section">
                     <h2 class="settings-section-title">JSON 匯出</h2>
                     <button id="btn-export-clients" class="btn-secondary btn-full">匯出個案檔案</button>
