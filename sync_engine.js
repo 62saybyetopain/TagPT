@@ -6,13 +6,6 @@ import { executeWrite, getAllRecords, getRecord, STORES } from '../database/idb_
 const lock   = (msg, onCancel) => window.dispatchEvent(new CustomEvent('app:lock', { detail: { msg, onCancel } }));
 const unlock = () => window.dispatchEvent(new CustomEvent('app:unlock'));
 
-// ─── Google Drive 備份 ────────────────────────────────────────────────────────
-// GIS Token Client 採隱式授權流程（Implicit Flow），純前端無後端可安全使用；
-// token 存於模組變數而非 localStorage，避免敏感憑證被持久化至本地儲存。
-const _GC_ID = '89111873265-1848u7h9e5kgr5o0d3qqpbr0oie41u1d.apps.googleusercontent.com';
-const _DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const _BACKUP_FILENAME = 'physio-backup.json';
-let _accessToken = null;
 
 const _getAccessToken = () => new Promise((resolve, reject) => {
     if (_accessToken) return resolve(_accessToken);
@@ -105,6 +98,98 @@ const SCOPE_STORES = {
     clients:  [STORES.CLIENTS, STORES.RECORDS],
     tags:     [STORES.TAGS],
     full:     [STORES.CLIENTS, STORES.RECORDS, STORES.TAGS, STORES.COLD_DIRECTORY]
+};
+
+// ─── Google Drive 備份 ────────────────────────────────────────────────────────
+// GIS Token Client 採隱式授權流程（Implicit Flow），純前端無後端可安全使用；
+// token 存於模組變數而非 localStorage，避免敏感憑證被持久化至本地儲存。
+const _GC_ID = '89111873265-1848u7h9e5kgr5o0d3qqpbr0oie41u1d.apps.googleusercontent.com';
+const _DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const _BACKUP_FILENAME = 'physio-backup.json';
+let _accessToken = null;
+
+const _getAccessToken = () => new Promise((resolve, reject) => {
+    if (_accessToken) return resolve(_accessToken);
+    if (!window.google?.accounts?.oauth2) {
+        return reject(new Error('Google 登入服務尚未就緒，請確認網路連線後重試'));
+    }
+    const client = google.accounts.oauth2.initTokenClient({
+        client_id: _GC_ID,
+        scope: _DRIVE_SCOPE,
+        callback: (res) => {
+            if (res.error) return reject(new Error(`Google 授權失敗: ${res.error}`));
+            _accessToken = res.access_token;
+            // access token 有效期 1 小時，提前 5 分鐘清除強制下次重新授權
+            setTimeout(() => { _accessToken = null; }, 55 * 60 * 1000);
+            resolve(_accessToken);
+        }
+    });
+    client.requestAccessToken();
+});
+
+const _findBackupFileId = async (token) => {
+    const q = encodeURIComponent(`name='${_BACKUP_FILENAME}' and trashed=false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error(`Drive 查詢失敗: ${res.status}`);
+    const data = await res.json();
+    return data.files?.[0]?.id || null;
+};
+
+export const driveBackup = async () => {
+    lock('正在備份至 Google Drive...');
+    try {
+        const token = await _getAccessToken();
+        const payload = {};
+        for (const name of SCOPE_STORES.full) {
+            payload[name] = await getAllRecords(name);
+        }
+        const fileId = await _findBackupFileId(token);
+        const meta = JSON.stringify({ name: _BACKUP_FILENAME, mimeType: 'application/json' });
+        const body = new FormData();
+        body.append('metadata', new Blob([meta], { type: 'application/json' }));
+        body.append('file',     new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+        // 已有舊檔用 PATCH 覆寫，首次用 POST 新建，維持 Drive 內永遠只有一個備份檔
+        const url = fileId
+            ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
+            : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+        const res = await fetch(url, {
+            method: fileId ? 'PATCH' : 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body
+        });
+        if (!res.ok) throw new Error(`Drive 寫入失敗: ${res.status}`);
+        alert('備份成功 ✓');
+    } catch (err) {
+        if (err.message?.includes('401')) _accessToken = null;
+        alert(`[備份失敗] ${err.message}`);
+    } finally {
+        unlock();
+    }
+};
+
+export const driveRestore = async () => {
+    const confirmed = _showRedConfirm('將從 Google Drive 還原並完全覆蓋目前資料，此操作無法復原。確定繼續？');
+    if (!confirmed) return;
+    lock('正在從 Google Drive 還原...');
+    try {
+        const token = await _getAccessToken();
+        const fileId = await _findBackupFileId(token);
+        if (!fileId) throw new Error('找不到備份檔，請先在電腦端執行至少一次備份');
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error(`Drive 讀取失敗: ${res.status}`);
+        const rawData = await res.text();
+        // 直接複用現有 importJSON('full') 邏輯，確保冷資料比對與 Schema 驗證行為一致
+        await importJSON(rawData, 'full');
+    } catch (err) {
+        if (err.message?.includes('401')) _accessToken = null;
+        alert(`[還原失敗] ${err.message}`);
+    } finally {
+        unlock();
+    }
 };
 
 let _currentPeerId = '';
